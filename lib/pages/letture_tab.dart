@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../gospel_fetcher.dart';
+
 /// Gestione editoriale delle letture: elenco (inclusi i contenuti programmati
 /// per il futuro), creazione e modifica con data di pubblicazione.
 class LettureTab extends StatefulWidget {
@@ -142,9 +144,42 @@ class _LetturaEditorState extends State<_LetturaEditor> {
   late final TextEditingController _titolo;
   late final TextEditingController _vangelo;
   late final TextEditingController _commento;
+  late final TextEditingController _originale;
+  late final TextEditingController _lingua;
+  final List<_KeyWordRow> _parole = [];
   late DateTime _data;
   bool _busy = false;
   String? _error;
+  bool _composing = false;
+  String? _composeError;
+
+  Future<void> _compose() async {
+    final ref = _titolo.text.trim();
+    if (ref.isEmpty) {
+      setState(() => _composeError = 'Scrivi prima la citazione qui sopra.');
+      return;
+    }
+    setState(() {
+      _composing = true;
+      _composeError = null;
+    });
+    try {
+      final res = await GospelFetcher().compose(ref);
+      setState(() {
+        _vangelo.text = res.italian;
+        _originale.text = res.greek;
+        if (res.greek.isNotEmpty && _lingua.text.trim().isEmpty) {
+          _lingua.text = 'Greco (Textus Receptus)';
+        }
+      });
+    } on ComposeException catch (e) {
+      setState(() => _composeError = e.message);
+    } catch (_) {
+      setState(() => _composeError = 'Composizione non riuscita. Riprova.');
+    } finally {
+      if (mounted) setState(() => _composing = false);
+    }
+  }
 
   @override
   void initState() {
@@ -153,6 +188,15 @@ class _LetturaEditorState extends State<_LetturaEditor> {
     _titolo = TextEditingController(text: e?['titolo_vangelo'] as String? ?? '');
     _vangelo = TextEditingController(text: e?['testo_vangelo'] as String? ?? '');
     _commento = TextEditingController(text: e?['testo_commento'] as String? ?? '');
+    _originale = TextEditingController(text: e?['testo_originale'] as String? ?? '');
+    _lingua = TextEditingController(
+        text: e?['lingua_originale'] as String? ?? 'Greco (Textus Receptus)');
+    final parole = (e?['parole_chiave'] as List?)?.cast<Map<String, dynamic>>();
+    if (parole != null) {
+      for (final p in parole) {
+        _parole.add(_KeyWordRow.from(p));
+      }
+    }
     _data = e != null
         ? DateTime.parse(e['data_pubblicazione'] as String)
         : DateTime.now();
@@ -163,6 +207,11 @@ class _LetturaEditorState extends State<_LetturaEditor> {
     _titolo.dispose();
     _vangelo.dispose();
     _commento.dispose();
+    _originale.dispose();
+    _lingua.dispose();
+    for (final p in _parole) {
+      p.dispose();
+    }
     super.dispose();
   }
 
@@ -183,12 +232,21 @@ class _LetturaEditorState extends State<_LetturaEditor> {
       _error = null;
     });
     final client = Supabase.instance.client;
+    final parole = _parole
+        .where((p) => p.greco.text.trim().isNotEmpty)
+        .map((p) => p.toJson())
+        .toList();
     final payload = {
       'data_pubblicazione':
           DateFormat('yyyy-MM-dd').format(_data),
       'titolo_vangelo': _titolo.text.trim(),
       'testo_vangelo': _vangelo.text.trim(),
       'testo_commento': _commento.text.trim(),
+      'testo_originale':
+          _originale.text.trim().isEmpty ? null : _originale.text.trim(),
+      'lingua_originale':
+          _originale.text.trim().isEmpty ? null : _lingua.text.trim(),
+      'parole_chiave': parole,
     };
     try {
       if (widget.existing != null) {
@@ -259,6 +317,35 @@ class _LetturaEditorState extends State<_LetturaEditor> {
                           validator: (v) =>
                               (v == null || v.trim().isEmpty) ? 'Obbligatorio' : null,
                         ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            FilledButton.tonalIcon(
+                              onPressed: _composing ? null : _compose,
+                              icon: _composing
+                                  ? const SizedBox(
+                                      height: 16,
+                                      width: 16,
+                                      child: CircularProgressIndicator(
+                                          strokeWidth: 2))
+                                  : const Icon(Icons.auto_fix_high, size: 18),
+                              label: const Text('Componi Vangelo e greco'),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                _composeError ??
+                                    'Riempie da solo testo Diodati e greco dalla citazione qui sopra.',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: _composeError != null
+                                      ? Colors.red
+                                      : Colors.grey,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                         const SizedBox(height: 12),
                         TextFormField(
                           controller: _vangelo,
@@ -286,6 +373,63 @@ class _LetturaEditorState extends State<_LetturaEditor> {
                           ),
                           validator: (v) =>
                               (v == null || v.trim().isEmpty) ? 'Obbligatorio' : null,
+                        ),
+                        const SizedBox(height: 24),
+                        const Divider(),
+                        const SizedBox(height: 8),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            'Alla radice delle parole (facoltativo)',
+                            style: Theme.of(context).textTheme.titleMedium,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        const Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            'Testo originale a fronte e parole chiave. Se lasci '
+                            'tutto vuoto, la sezione non appare nell\'app.',
+                            style: TextStyle(fontSize: 12, color: Colors.grey),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        TextFormField(
+                          controller: _originale,
+                          minLines: 2,
+                          maxLines: 8,
+                          decoration: const InputDecoration(
+                            labelText: 'Testo originale (greco/aramaico)',
+                            alignLabelWithHint: true,
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        TextFormField(
+                          controller: _lingua,
+                          decoration: const InputDecoration(
+                            labelText: 'Etichetta lingua (es. Greco — Textus Receptus)',
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        ..._parole.asMap().entries.map((entry) => Padding(
+                              padding: const EdgeInsets.only(bottom: 12),
+                              child: _KeyWordEditor(
+                                row: entry.value,
+                                index: entry.key + 1,
+                                onRemove: () =>
+                                    setState(() => _parole.removeAt(entry.key)),
+                              ),
+                            )),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: OutlinedButton.icon(
+                            onPressed: () =>
+                                setState(() => _parole.add(_KeyWordRow())),
+                            icon: const Icon(Icons.add),
+                            label: const Text('Aggiungi parola chiave'),
+                          ),
                         ),
                       ],
                     ),
@@ -320,6 +464,126 @@ class _LetturaEditorState extends State<_LetturaEditor> {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Gruppo di controller per una riga "parola chiave" nel form.
+class _KeyWordRow {
+  final TextEditingController greco;
+  final TextEditingController traslit;
+  final TextEditingController significato;
+  final TextEditingController nota;
+
+  _KeyWordRow()
+      : greco = TextEditingController(),
+        traslit = TextEditingController(),
+        significato = TextEditingController(),
+        nota = TextEditingController();
+
+  _KeyWordRow.from(Map<String, dynamic> p)
+      : greco = TextEditingController(text: p['greco'] as String? ?? ''),
+        traslit =
+            TextEditingController(text: p['traslitterazione'] as String? ?? ''),
+        significato =
+            TextEditingController(text: p['significato'] as String? ?? ''),
+        nota = TextEditingController(text: p['nota'] as String? ?? '');
+
+  Map<String, dynamic> toJson() => {
+        'greco': greco.text.trim(),
+        'traslitterazione': traslit.text.trim(),
+        'significato': significato.text.trim(),
+        if (nota.text.trim().isNotEmpty) 'nota': nota.text.trim(),
+      };
+
+  void dispose() {
+    greco.dispose();
+    traslit.dispose();
+    significato.dispose();
+    nota.dispose();
+  }
+}
+
+class _KeyWordEditor extends StatelessWidget {
+  const _KeyWordEditor({
+    required this.row,
+    required this.index,
+    required this.onRemove,
+  });
+
+  final _KeyWordRow row;
+  final int index;
+  final VoidCallback onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        border: Border.all(color: Colors.grey.shade300),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Text('Parola $index',
+                  style: const TextStyle(fontWeight: FontWeight.bold)),
+              const Spacer(),
+              IconButton(
+                onPressed: onRemove,
+                icon: const Icon(Icons.close, size: 18),
+                tooltip: 'Rimuovi',
+              ),
+            ],
+          ),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: row.greco,
+                  decoration: const InputDecoration(
+                    labelText: 'Originale (es. λαῖλαψ)',
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: TextField(
+                  controller: row.traslit,
+                  decoration: const InputDecoration(
+                    labelText: 'Traslitterazione',
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: row.significato,
+            decoration: const InputDecoration(
+              labelText: 'Senso letterale',
+              border: OutlineInputBorder(),
+              isDense: true,
+            ),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: row.nota,
+            minLines: 1,
+            maxLines: 3,
+            decoration: const InputDecoration(
+              labelText: 'Nota (facoltativa)',
+              border: OutlineInputBorder(),
+              isDense: true,
+            ),
+          ),
+        ],
       ),
     );
   }
