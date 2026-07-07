@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'letture_tab.dart';
+import 'meditazioni_tab.dart';
 import 'moderazione_tab.dart';
 
 /// Contenitore autenticato: verifica il ruolo admin e mostra le due sezioni
@@ -69,10 +70,10 @@ class _DashboardPageState extends State<DashboardPage> {
     }
 
     return DefaultTabController(
-      length: 2,
+      length: 3,
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('San Cristoforo — Amministrazione'),
+          title: const Text('IO CHI? CHI IO? — Amministrazione'),
           actions: [
             IconButton(
               onPressed: _logout,
@@ -83,12 +84,13 @@ class _DashboardPageState extends State<DashboardPage> {
           bottom: const TabBar(
             tabs: [
               Tab(icon: Icon(Icons.menu_book), text: 'Letture'),
+              Tab(icon: Icon(Icons.self_improvement), text: 'Meditazioni'),
               Tab(icon: Icon(Icons.forum), text: 'Moderazione'),
             ],
           ),
         ),
         body: const TabBarView(
-          children: [LettureTab(), ModerazioneTab()],
+          children: [LettureTab(), MeditazioniTab(), ModerazioneTab()],
         ),
       ),
     );

@@ -167,9 +167,9 @@ class _LetturaEditorState extends State<_LetturaEditor> {
       final res = await GospelFetcher().compose(ref);
       setState(() {
         _vangelo.text = res.italian;
-        _originale.text = res.greek;
-        if (res.greek.isNotEmpty && _lingua.text.trim().isEmpty) {
-          _lingua.text = 'Greco (Textus Receptus)';
+        _originale.text = res.original;
+        if (res.original.isNotEmpty) {
+          _lingua.text = res.originalLanguage;
         }
       });
     } on ComposeException catch (e) {
@@ -311,7 +311,8 @@ class _LetturaEditorState extends State<_LetturaEditor> {
                         TextFormField(
                           controller: _titolo,
                           decoration: const InputDecoration(
-                            labelText: 'Riferimento biblico (es. Marco 4, 35-41)',
+                            labelText:
+                                'Riferimento (es. Marco 4, 35-41 · Corano 2, 255)',
                             border: OutlineInputBorder(),
                           ),
                           validator: (v) =>
@@ -329,13 +330,13 @@ class _LetturaEditorState extends State<_LetturaEditor> {
                                       child: CircularProgressIndicator(
                                           strokeWidth: 2))
                                   : const Icon(Icons.auto_fix_high, size: 18),
-                              label: const Text('Componi Vangelo e greco'),
+                              label: const Text('Componi testo e originale'),
                             ),
                             const SizedBox(width: 10),
                             Expanded(
                               child: Text(
                                 _composeError ??
-                                    'Riempie da solo testo Diodati e greco dalla citazione qui sopra.',
+                                    'Riempie da solo il testo e la lingua originale (Bibbia: Diodati + greco · Corano: Piccardo + arabo).',
                                 style: TextStyle(
                                   fontSize: 12,
                                   color: _composeError != null

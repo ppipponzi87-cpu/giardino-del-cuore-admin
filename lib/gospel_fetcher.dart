@@ -4,9 +4,14 @@ import 'package:http/http.dart' as http;
 
 /// Risultato della composizione automatica di un brano.
 class ComposeResult {
-  final String italian; // Diodati
-  final String greek; // Textus Receptus
-  const ComposeResult({required this.italian, required this.greek});
+  final String italian; // traduzione italiana
+  final String original; // testo originale (greco o arabo)
+  final String originalLanguage; // etichetta della lingua originale
+  const ComposeResult({
+    required this.italian,
+    required this.original,
+    required this.originalLanguage,
+  });
 }
 
 class ComposeException implements Exception {
@@ -16,51 +21,128 @@ class ComposeException implements Exception {
   String toString() => message;
 }
 
-/// Compone il testo di un brano a partire dalla citazione (es. "Marco 4, 35-41"):
-/// recupera l'italiano (Diodati) e il greco (Textus Receptus) da getbible.net,
-/// entrambi accessibili dal browser (CORS aperto).
+/// Compone il testo di un brano a partire dalla citazione.
+///
+/// - Bibbia (es. "Marco 4, 35-41"): italiano Diodati + greco Textus Receptus
+///   da getbible.net.
+/// - Corano (es. "Corano 2, 255" o "Sura 2, 255"): italiano (Piccardo) + arabo
+///   da alquran.cloud.
+///
+/// Entrambe le fonti sono accessibili dal browser (CORS aperto).
 class GospelFetcher {
-  static const _base = 'https://api.getbible.net/v2';
-
   Future<ComposeResult> compose(String reference) async {
-    final ref = _parse(reference);
-    final italian = await _fetch('giovanni', ref);
-    final greek = await _fetch('textusreceptus', ref);
+    final s = reference.trim();
+    if (_isQuran(s)) return _composeQuran(s);
+    return _composeBible(s);
+  }
+
+  // ==================== BIBBIA ====================
+  static const _bibleBase = 'https://api.getbible.net/v2';
+
+  Future<ComposeResult> _composeBible(String reference) async {
+    final ref = _parseBible(reference);
+    final italian = await _fetchBible('giovanni', ref);
+    final greek = await _fetchBible('textusreceptus', ref);
     if (italian.isEmpty && greek.isEmpty) {
       throw ComposeException(
           'Nessun versetto trovato per "$reference". Controlla la citazione.');
     }
-    return ComposeResult(italian: italian, greek: greek);
+    return ComposeResult(
+      italian: italian,
+      original: greek,
+      originalLanguage: 'Greco (Textus Receptus)',
+    );
   }
 
-  Future<String> _fetch(String translation, _Ref ref) async {
-    final url = '$_base/$translation/${ref.book}/${ref.chapter}.json';
+  Future<String> _fetchBible(String translation, _Ref ref) async {
+    final url = '$_bibleBase/$translation/${ref.book}/${ref.chapter}.json';
     final resp = await http.get(Uri.parse(url));
     if (resp.statusCode != 200) {
-      throw ComposeException(
-          'Impossibile scaricare il testo (${ref.chapter}). Riprova.');
+      throw ComposeException('Impossibile scaricare il testo. Riprova.');
     }
     final data = jsonDecode(resp.body) as Map<String, dynamic>;
     final raw = data['verses'] ?? data['chapter'];
     final list = raw is List ? raw : (raw as Map).values.toList();
+    return _joinRange(list, 'verse', 'text', ref.from, ref.to);
+  }
+
+  // ==================== CORANO ====================
+  static const _quranBase = 'https://api.alquran.cloud/v1';
+
+  Future<ComposeResult> _composeQuran(String reference) async {
+    final ref = _parseQuran(reference);
+    final italian = await _fetchQuran('it.piccardo', ref);
+    final arabic = await _fetchQuran('quran-uthmani', ref);
+    if (italian.isEmpty && arabic.isEmpty) {
+      throw ComposeException(
+          'Nessun versetto trovato per "$reference". Controlla la citazione.');
+    }
+    return ComposeResult(
+      italian: italian,
+      original: arabic,
+      originalLanguage: 'Arabo (testo coranico)',
+    );
+  }
+
+  Future<String> _fetchQuran(String edition, _Ref ref) async {
+    final url = '$_quranBase/surah/${ref.book}/$edition';
+    final resp = await http.get(Uri.parse(url));
+    if (resp.statusCode != 200) {
+      throw ComposeException('Impossibile scaricare il testo del Corano. Riprova.');
+    }
+    final data = jsonDecode(resp.body) as Map<String, dynamic>;
+    final ayahs = (data['data']?['ayahs']) as List? ?? const [];
+    return _joinRange(ayahs, 'numberInSurah', 'text', ref.from, ref.to);
+  }
+
+  // ==================== util ====================
+  String _joinRange(
+      List list, String numKey, String textKey, int from, int to) {
     final buf = <String>[];
     for (final v in list) {
       final m = v as Map<String, dynamic>;
-      final n = (m['verse'] is int)
-          ? m['verse'] as int
-          : int.tryParse('${m['verse']}') ?? 0;
-      if (n < ref.from || n > ref.to) continue;
-      buf.add((m['text'] as String).trim());
+      final n = (m[numKey] is int)
+          ? m[numKey] as int
+          : int.tryParse('${m[numKey]}') ?? 0;
+      if (n < from || n > to) continue;
+      buf.add((m[textKey] as String).trim());
     }
     return buf.join(' ').replaceAll(RegExp(r'\s+'), ' ').trim();
   }
 
-  _Ref _parse(String input) {
-    final s = input.trim();
-    // Cattura: [ordinale] Nome  capitolo [ , : verso [ - verso ] ]
+  bool _isQuran(String s) {
+    final head = s.toLowerCase().trimLeft();
+    return head.startsWith('corano') ||
+        head.startsWith('quran') ||
+        head.startsWith('sura') ||
+        head.startsWith('surah');
+  }
+
+  _Ref _parseQuran(String input) {
+    // "Corano 2, 255" | "Sura 2:255" | "Corano 2, 1-5" | "Corano 1"
+    final m = RegExp(
+      r'^(?:corano|quran|surah|sura)\s+(\d+)\s*(?:[,:]\s*(\d+)\s*(?:[-–]\s*(\d+))?)?\s*$',
+      caseSensitive: false,
+    ).firstMatch(input.trim());
+    if (m == null) {
+      throw ComposeException(
+          'Citazione del Corano non riconosciuta. Usa "Corano 2, 255".');
+    }
+    final surah = int.parse(m.group(1)!);
+    if (surah < 1 || surah > 114) {
+      throw ComposeException('Sura inesistente: $surah (1–114).');
+    }
+    final from = m.group(2) != null ? int.parse(m.group(2)!) : 1;
+    final to = m.group(3) != null
+        ? int.parse(m.group(3)!)
+        : (m.group(2) != null ? from : 999);
+    return _Ref(book: surah, chapter: 0, from: from, to: to);
+  }
+
+  _Ref _parseBible(String input) {
     final m = RegExp(
       r"^([1-3]|i{1,3}|I{1,3})?\s*([A-Za-zÀ-ÿ.’' ]+?)\s+(\d+)\s*(?:[,:]\s*(\d+)\s*(?:[-–]\s*(\d+))?)?\s*$",
-    ).firstMatch(s);
+    ).firstMatch(input.trim());
     if (m == null) {
       throw ComposeException(
           'Citazione non riconosciuta. Usa un formato come "Marco 4, 35-41".');
@@ -69,8 +151,9 @@ class GospelFetcher {
     final nomeGrezzo = m.group(2)!;
     final chapter = int.parse(m.group(3)!);
     final from = m.group(4) != null ? int.parse(m.group(4)!) : 1;
-    final to = m.group(5) != null ? int.parse(m.group(5)!) : (m.group(4) != null ? from : 999);
-
+    final to = m.group(5) != null
+        ? int.parse(m.group(5)!)
+        : (m.group(4) != null ? from : 999);
     final key = ordinale + _normalize(nomeGrezzo);
     final book = _books[key] ?? _books[_normalize(nomeGrezzo)];
     if (book == null) {
@@ -98,7 +181,6 @@ class GospelFetcher {
     return t.replaceAll(RegExp(r"[^a-z]"), '');
   }
 
-  // Nome normalizzato (senza spazi/accenti, ordinale come cifra) -> numero libro.
   static const Map<String, int> _books = {
     'genesi': 1, 'esodo': 2, 'levitico': 3, 'numeri': 4, 'deuteronomio': 5,
     'giosue': 6, 'giudici': 7, 'rut': 8, '1samuele': 9, '2samuele': 10,
@@ -120,7 +202,7 @@ class GospelFetcher {
 }
 
 class _Ref {
-  final int book;
+  final int book; // libro biblico o numero sura
   final int chapter;
   final int from;
   final int to;

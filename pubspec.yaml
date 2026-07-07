@@ -16,6 +16,7 @@ dependencies:
   intl: any
   just_audio: ^0.9.42
   http: ^1.2.2
+  file_picker: ^11.0.2
 
 dev_dependencies:
   flutter_test:

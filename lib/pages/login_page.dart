@@ -61,7 +61,7 @@ class _LoginPageState extends State<LoginPage> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Text('San Cristoforo',
+                    Text('IO CHI? CHI IO?',
                         textAlign: TextAlign.center,
                         style: Theme.of(context).textTheme.headlineSmall),
                     const SizedBox(height: 4),
