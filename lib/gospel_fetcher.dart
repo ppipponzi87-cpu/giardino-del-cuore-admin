@@ -2,15 +2,25 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+/// Suggerimento di parola chiave: parola nella lingua originale + traslitterazione.
+/// Il significato lo compila (o corregge) l'admin.
+class WordSuggestion {
+  final String original;
+  final String translit;
+  const WordSuggestion(this.original, this.translit);
+}
+
 /// Risultato della composizione automatica di un brano.
 class ComposeResult {
   final String italian; // traduzione italiana
   final String original; // testo originale (greco o arabo)
   final String originalLanguage; // etichetta della lingua originale
+  final List<WordSuggestion> suggestions; // 5 parole chiave suggerite
   const ComposeResult({
     required this.italian,
     required this.original,
     required this.originalLanguage,
+    this.suggestions = const [],
   });
 }
 
@@ -51,6 +61,7 @@ class GospelFetcher {
       italian: italian,
       original: greek,
       originalLanguage: 'Greco (Textus Receptus)',
+      suggestions: _suggest(greek, arabic: false),
     );
   }
 
@@ -81,6 +92,7 @@ class GospelFetcher {
       italian: italian,
       original: arabic,
       originalLanguage: 'Arabo (testo coranico)',
+      suggestions: _suggest(arabic, arabic: true),
     );
   }
 
@@ -108,6 +120,85 @@ class GospelFetcher {
       buf.add((m[textKey] as String).trim());
     }
     return buf.join(' ').replaceAll(RegExp(r'\s+'), ' ').trim();
+  }
+
+  // ============ suggerimento parole chiave ============
+
+  /// Sceglie fino a 5 parole "di peso" dal testo originale (le più lunghe,
+  /// escluse quelle comuni), con la loro traslitterazione. Il significato
+  /// resta all'admin.
+  List<WordSuggestion> _suggest(String text, {required bool arabic}) {
+    if (text.trim().isEmpty) return const [];
+    final stop = arabic ? _arStop : _grStop;
+    final seen = <String>{};
+    final words = <String>[];
+    for (final raw in text.split(RegExp(r'\s+'))) {
+      final w = _stripPunct(raw, arabic: arabic);
+      if (w.isEmpty) continue;
+      final base = arabic ? _stripArabicMarks(w) : w;
+      if (base.length < (arabic ? 3 : 4)) continue;
+      if (stop.contains(base)) continue;
+      if (seen.contains(base)) continue;
+      seen.add(base);
+      words.add(w);
+    }
+    words.sort((a, b) => (arabic ? _stripArabicMarks(b) : b)
+        .length
+        .compareTo((arabic ? _stripArabicMarks(a) : a).length));
+    return words
+        .take(5)
+        .map((w) => WordSuggestion(
+            w, arabic ? _translitArabic(w) : _translitGreek(w)))
+        .toList();
+  }
+
+  String _stripPunct(String s, {required bool arabic}) {
+    return s.replaceAll(
+        arabic ? RegExp(r'[^؀-ۿ]') : RegExp(r'[^α-ωΑ-Ω]'), '');
+  }
+
+  String _stripArabicMarks(String s) =>
+      s.replaceAll(RegExp(r'[ً-ْٰـ]'), '');
+
+  static const _grStop = {
+    'και', 'του', 'την', 'τον', 'της', 'τω', 'το', 'τα', 'οι', 'αι', 'εν',
+    'δε', 'γαρ', 'ουκ', 'ουχ', 'μη', 'εις', 'εκ', 'προς', 'απο', 'επι',
+    'αυτου', 'αυτω', 'αυτον', 'αυτοις', 'αυτο', 'υμων', 'υμιν', 'ημων',
+    'οτι', 'ως', 'ουτος', 'ουτως', 'εστιν', 'ειπεν', 'λεγει',
+  };
+  static const _arStop = {
+    'الله', 'من', 'في', 'على', 'الى', 'عن', 'ما', 'لا', 'ان', 'الذي',
+    'التي', 'هو', 'هي', 'هذا', 'ذلك', 'كان', 'قال', 'ثم', 'قد', 'كل',
+  };
+
+  String _translitGreek(String w) {
+    const map = {
+      'θ': 'th', 'χ': 'ch', 'ψ': 'ps', 'ξ': 'x', 'φ': 'ph',
+      'α': 'a', 'β': 'b', 'γ': 'g', 'δ': 'd', 'ε': 'e', 'ζ': 'z', 'η': 'e',
+      'ι': 'i', 'κ': 'k', 'λ': 'l', 'μ': 'm', 'ν': 'n', 'ο': 'o', 'π': 'p',
+      'ρ': 'r', 'σ': 's', 'ς': 's', 'τ': 't', 'υ': 'y', 'ω': 'o',
+    };
+    final b = StringBuffer();
+    for (final ch in w.toLowerCase().split('')) {
+      b.write(map[ch] ?? ch);
+    }
+    return b.toString();
+  }
+
+  String _translitArabic(String w) {
+    const map = {
+      'ا': 'a', 'أ': 'a', 'إ': 'i', 'آ': 'a', 'ٱ': 'a', 'ب': 'b', 'ت': 't',
+      'ث': 'th', 'ج': 'j', 'ح': 'h', 'خ': 'kh', 'د': 'd', 'ذ': 'dh', 'ر': 'r',
+      'ز': 'z', 'س': 's', 'ش': 'sh', 'ص': 's', 'ض': 'd', 'ط': 't', 'ظ': 'z',
+      'ع': "'", 'غ': 'gh', 'ف': 'f', 'ق': 'q', 'ك': 'k', 'ل': 'l', 'م': 'm',
+      'ن': 'n', 'ه': 'h', 'ة': 'a', 'و': 'w', 'ي': 'y', 'ى': 'a', 'ء': "'",
+      'ؤ': 'w', 'ئ': 'y',
+    };
+    final b = StringBuffer();
+    for (final ch in _stripArabicMarks(w).split('')) {
+      b.write(map[ch] ?? '');
+    }
+    return b.toString();
   }
 
   bool _isQuran(String s) {

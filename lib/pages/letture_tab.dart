@@ -146,6 +146,7 @@ class _LetturaEditorState extends State<_LetturaEditor> {
   late final TextEditingController _commento;
   late final TextEditingController _originale;
   late final TextEditingController _lingua;
+  late final TextEditingController _tags;
   final List<_KeyWordRow> _parole = [];
   late DateTime _data;
   bool _busy = false;
@@ -171,6 +172,19 @@ class _LetturaEditorState extends State<_LetturaEditor> {
         if (res.original.isNotEmpty) {
           _lingua.text = res.originalLanguage;
         }
+        // Precompila le parole chiave solo se non ce ne sono già.
+        if (_parole.every((p) => p.greco.text.trim().isEmpty) &&
+            res.suggestions.isNotEmpty) {
+          for (final p in _parole) {
+            p.dispose();
+          }
+          _parole
+            ..clear()
+            ..addAll(res.suggestions.map((s) => _KeyWordRow.from({
+                  'greco': s.original,
+                  'traslitterazione': s.translit,
+                })));
+        }
       });
     } on ComposeException catch (e) {
       setState(() => _composeError = e.message);
@@ -191,6 +205,8 @@ class _LetturaEditorState extends State<_LetturaEditor> {
     _originale = TextEditingController(text: e?['testo_originale'] as String? ?? '');
     _lingua = TextEditingController(
         text: e?['lingua_originale'] as String? ?? 'Greco (Textus Receptus)');
+    final tagList = (e?['tags'] as List?)?.map((t) => t.toString()).toList();
+    _tags = TextEditingController(text: (tagList ?? const []).join(', '));
     final parole = (e?['parole_chiave'] as List?)?.cast<Map<String, dynamic>>();
     if (parole != null) {
       for (final p in parole) {
@@ -209,6 +225,7 @@ class _LetturaEditorState extends State<_LetturaEditor> {
     _commento.dispose();
     _originale.dispose();
     _lingua.dispose();
+    _tags.dispose();
     for (final p in _parole) {
       p.dispose();
     }
@@ -236,6 +253,12 @@ class _LetturaEditorState extends State<_LetturaEditor> {
         .where((p) => p.greco.text.trim().isNotEmpty)
         .map((p) => p.toJson())
         .toList();
+    final tags = _tags.text
+        .split(RegExp(r'[,\n]'))
+        .map((t) => t.trim().toLowerCase().replaceAll('#', ''))
+        .where((t) => t.isNotEmpty)
+        .toSet()
+        .toList();
     final payload = {
       'data_pubblicazione':
           DateFormat('yyyy-MM-dd').format(_data),
@@ -247,6 +270,7 @@ class _LetturaEditorState extends State<_LetturaEditor> {
       'lingua_originale':
           _originale.text.trim().isEmpty ? null : _lingua.text.trim(),
       'parole_chiave': parole,
+      'tags': tags,
     };
     try {
       if (widget.existing != null) {
@@ -374,6 +398,18 @@ class _LetturaEditorState extends State<_LetturaEditor> {
                           ),
                           validator: (v) =>
                               (v == null || v.trim().isEmpty) ? 'Obbligatorio' : null,
+                        ),
+                        const SizedBox(height: 12),
+                        TextFormField(
+                          controller: _tags,
+                          decoration: const InputDecoration(
+                            labelText: 'Hashtag tematici (separati da virgola)',
+                            hintText: 'es. misericordia, paura, perdono',
+                            prefixIcon: Icon(Icons.tag),
+                            border: OutlineInputBorder(),
+                            helperText:
+                                'Servono per la ricerca tematica nell\'app.',
+                          ),
                         ),
                         const SizedBox(height: 24),
                         const Divider(),
