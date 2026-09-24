@@ -6,9 +6,10 @@ import 'letture_tab.dart';
 import 'meditazioni_tab.dart';
 import 'moderazione_tab.dart';
 import 'opere_tab.dart';
+import 'racconti_tabs.dart';
 
 /// Contenitore autenticato: verifica il ruolo admin e mostra le sezioni
-/// (letture, opere, meditazioni, campagne, moderazione).
+/// (letture, opere, meditazioni, storie, animazioni, campagne, moderazione).
 class DashboardPage extends StatefulWidget {
   const DashboardPage({super.key});
 
@@ -72,7 +73,7 @@ class _DashboardPageState extends State<DashboardPage> {
     }
 
     return DefaultTabController(
-      length: 5,
+      length: 7,
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Il Giardino del Cuore — Amministrazione'),
@@ -84,10 +85,13 @@ class _DashboardPageState extends State<DashboardPage> {
             ),
           ],
           bottom: const TabBar(
+            isScrollable: true,
             tabs: [
               Tab(icon: Icon(Icons.menu_book), text: 'Letture'),
               Tab(icon: Icon(Icons.auto_stories), text: 'Opere'),
               Tab(icon: Icon(Icons.self_improvement), text: 'Meditazioni'),
+              Tab(icon: Icon(Icons.menu_book_outlined), text: 'Storie'),
+              Tab(icon: Icon(Icons.movie), text: 'Animazioni'),
               Tab(icon: Icon(Icons.volunteer_activism), text: 'Campagne'),
               Tab(icon: Icon(Icons.forum), text: 'Moderazione'),
             ],
@@ -98,6 +102,8 @@ class _DashboardPageState extends State<DashboardPage> {
             LettureTab(),
             OpereTab(),
             MeditazioniTab(),
+            StorieTab(),
+            AnimazioniTab(),
             CampagneTab(),
             ModerazioneTab(),
           ],
