@@ -1,11 +1,11 @@
 {
-    "name": "san_cristoforo_admin",
-    "short_name": "san_cristoforo_admin",
+    "name": "Il Giardino del Cuore — Admin",
+    "short_name": "Giardino Admin",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
     "theme_color": "#0175C2",
-    "description": "Pannello admin Comunità di San Cristoforo",
+    "description": "Pannello admin — Il Giardino del Cuore",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

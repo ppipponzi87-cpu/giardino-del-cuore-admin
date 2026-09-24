@@ -73,7 +73,7 @@ class _DashboardPageState extends State<DashboardPage> {
       length: 3,
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('IO CHI? CHI IO? — Amministrazione'),
+          title: const Text('Il Giardino del Cuore — Amministrazione'),
           actions: [
             IconButton(
               onPressed: _logout,

@@ -1,6 +1,6 @@
-# IO CHI? CHI IO? — Pannello Admin
+# Il Giardino del Cuore — Pannello Admin
 
-App web (Flutter) per amministrare i contenuti della Comunità di San Cristoforo:
+App web (Flutter) per amministrare i contenuti del Giardino del Cuore:
 
 - **Letture**: inserimento e modifica del Vangelo del giorno e del commento,
   con **data di pubblicazione programmabile** (i contenuti futuri compaiono

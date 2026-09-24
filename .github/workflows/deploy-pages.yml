@@ -33,7 +33,7 @@ jobs:
       # base-href = "/<nome-repo>/" perché Pages serve sotto quel percorso.
       - run: >
           flutter build web --release
-          --base-href=/san-cristoforo-admin/
+          --base-href=/giardino-del-cuore-admin/
           --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }}
           --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
 
